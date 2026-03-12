@@ -597,20 +597,20 @@ const Page1 = () => {
           size: 1
         }));
 
-// 2. Base Chart (c1)
-        if (seriesRefs.current.c1C) {
-          const validC1Markers = rawMarkers.map(m => {
-            // Snap to the exact aggregated candle time so it doesn't disappear on higher TFs
-            const aggBar = c1Data.slice().reverse().find(d => d.time <= m.time);
-            return aggBar ? { ...m, time: aggBar.time } : null;
-          }).filter(Boolean);
-          
-          if (!markersRefs.current.c1) {
-            markersRefs.current.c1 = createSeriesMarkers(seriesRefs.current.c1C, validC1Markers);
-          } else {
-            markersRefs.current.c1.setMarkers(validC1Markers);
-          }
+      // 2. Base Chart (c1)
+      if (seriesRefs.current.c1C) {
+        const validC1Markers = rawMarkers.map(m => {
+          // Snap to the exact aggregated candle time so it doesn't disappear on higher TFs
+          const aggBar = c1Data.slice().reverse().find(d => d.time <= m.time);
+          return aggBar ? { ...m, time: aggBar.time } : null;
+        }).filter(Boolean);
+
+        if (!markersRefs.current.c1) {
+          markersRefs.current.c1 = createSeriesMarkers(seriesRefs.current.c1C, validC1Markers);
+        } else {
+          markersRefs.current.c1.setMarkers(validC1Markers);
         }
+      }
 
       // 3. Aggregated Chart (c2)
       if (seriesRefs.current.c2C) {
@@ -644,7 +644,7 @@ const Page1 = () => {
     // Fit content This will make latest candle on Y - axis always
     // if (chartRefs.current.c1) chartRefs.current.c1.timeScale().scrollToPosition(0, false);
     // if (chartRefs.current.c2) chartRefs.current.c2.timeScale().scrollToPosition(0, false);
-  }, [currentIndex, isLoaded, c1Ma, c1Bb, c2Ma, openPnL, chartsReady, c1Timeframe, c2Timeframe,executions, showMarkers]);
+  }, [currentIndex, isLoaded, c1Ma, c1Bb, c2Ma, openPnL, chartsReady, c1Timeframe, c2Timeframe, executions, showMarkers]);
 
 
 
