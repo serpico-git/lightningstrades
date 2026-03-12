@@ -1,0 +1,62 @@
+@import "tailwindcss";
+
+/* Custom MetaSim Component Styles */
+.mt-panel {
+  background: #3a3a3a;
+  border: 2px solid;
+  border-color: #555 #222 #222 #555;
+}
+.mt-inset {
+  background: #222;
+  border: 2px solid;
+  border-color: #111 #555 #555 #111;
+  outline: none;
+}
+.mt-inset:focus {
+  border-color: #333 #777 #777 #333;
+}
+.mt-btn {
+  background: #e1e1e1;
+  color: black;
+  border: 2px solid;
+  border-color: #fff #888 #888 #fff;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.mt-btn:active {
+  border-color: #888 #fff #fff #888;
+  transform: translate(1px, 1px);
+}
+.mt-btn-red {
+  background: #ffbdc5;
+}
+.mt-btn-green {
+  background: #c5ffbd;
+}
+.mt-tab {
+  background: #3a3a3a;
+  border-top: 2px solid #555;
+  border-right: 2px solid #222;
+  padding: 6px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.mt-tab.active {
+  background: #444;
+  font-weight: bold;
+  color: white;
+  border-bottom: none;
+}
+.chart-wrapper {
+  touch-action: none;
+}
+.hide-scroll::-webkit-scrollbar {
+  display: none;
+}
+.hide-scroll {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
