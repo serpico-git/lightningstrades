@@ -51,3 +51,9 @@ yarn-error.log*
 .vscode/
 .idea/
 .DS_Store
+
+# wrangler files
+.wrangler
+.dev.vars*
+!.dev.vars.example
+!.env.example
