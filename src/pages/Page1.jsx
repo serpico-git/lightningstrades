@@ -187,6 +187,7 @@ const Page1 = () => {
   const seriesRefs = useRef({});
   const priceLineRefs = useRef({});
   const markersRefs = useRef({ c1: null, c2: null });
+  const prevTimeframes = useRef({ c1: null, c2: null });
 
   // COMPUTED VALUES
   const currentBar = fullData[currentIndex] || {};
@@ -492,10 +493,6 @@ const Page1 = () => {
         borderColor: '#374151',
         timeVisible: true,
         secondsVisible: false,
-        rightOffset: 15,          // empty bars of space on the right (future space)
-        fixLeftEdge: false,       // allow scrolling left past first candle
-        fixRightEdge: false,      // allow scrolling right past last candle
-        lockVisibleTimeRangeOnResize: true,
       },
       crosshair: { mode: 0 },
       handleScroll: { mouseWheel: true, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: true },
@@ -514,6 +511,7 @@ const Page1 = () => {
 
     initChart(container1, 'c1');
     initChart(container2, 'c2');
+
     setChartsReady(true);
 
     const resize = () => Object.values(chartRefs.current).forEach(c => {
@@ -570,6 +568,21 @@ const Page1 = () => {
     engine1Ref.current.remapTimes(c1Data);
     engine2Ref.current.remapTimes(c2Data);
 
+    // Scroll to latest candle ONLY when timeframe changes.
+    // Never on simulator ticks — user controls viewport freely otherwise.
+    const tf1Changed = prevTimeframes.current.c1 !== c1Timeframe;
+    const tf2Changed = prevTimeframes.current.c2 !== c2Timeframe;
+
+    if (tf1Changed) {
+      chartRefs.current.c1?.timeScale().fitContent();
+      prevTimeframes.current.c1 = c1Timeframe;
+    }
+    if (tf2Changed) {
+      chartRefs.current.c2?.timeScale().fitContent();
+      prevTimeframes.current.c2 = c2Timeframe;
+    }
+
+
     const currentLineIds = Object.keys(priceLineRefs.current);
     currentLineIds.forEach(id => {
       const refs = priceLineRefs.current[id];
@@ -577,10 +590,6 @@ const Page1 = () => {
       if (refs.c2 && seriesRefs.current.c2C) seriesRefs.current.c2C.removePriceLine(refs.c2);
       delete priceLineRefs.current[id];
     });
-
-    // Reapply rightOffset after every setData — LWC resets timeScale on data change
-    chartRefs.current.c1?.timeScale().applyOptions({ rightOffset: 15 });
-    chartRefs.current.c2?.timeScale().applyOptions({ rightOffset: 15 });
 
     // --- NEW: APPLY SERIES MARKERS (LWC v5 Plugin API) ---
     if (seriesRefs.current.c1C && executions.length > 0 && showMarkers) {
@@ -639,11 +648,7 @@ const Page1 = () => {
     if (newEqHistory.length === 0 || newEqHistory[newEqHistory.length - 1].time !== currentTime) {
       newEqHistory.push({ time: currentTime, value: currentEquity });
     }
-    setEquityHistory(newEqHistory);
-
-    // Fit content This will make latest candle on Y - axis always
-    // if (chartRefs.current.c1) chartRefs.current.c1.timeScale().scrollToPosition(0, false);
-    // if (chartRefs.current.c2) chartRefs.current.c2.timeScale().scrollToPosition(0, false);
+    setEquityHistory(newEqHistory)
   }, [currentIndex, isLoaded, c1Ma, c1Bb, c2Ma, openPnL, chartsReady, c1Timeframe, c2Timeframe, executions, showMarkers]);
 
 
@@ -702,8 +707,23 @@ const Page1 = () => {
     const x = e.clientX - r.left;
     const y = e.clientY - r.top;
     const engine = chartIdx === 0 ? engine1Ref.current : engine2Ref.current;
-    if (e.type === 'pointerdown') engine.handleMouseDown(x, y);
-    if (e.type === 'pointermove') engine.handleMouseMove(x, y);
+
+    if (e.type === 'pointermove') {
+      engine.handleMouseMove(x, y);
+      return;
+    }
+
+    if (e.type === 'pointerdown') {
+      const isTouch = e.pointerType === 'touch';
+
+      if (isTouch && engine.activePrim) {
+        // Mobile second tap: commit at the frozen preview position,
+        // not at the tap coordinates (which are wherever the finger lands).
+        engine.commitCurrentPreview();
+      } else {
+        engine.handleMouseDown(x, y);
+      }
+    }
   }, []);
 
   //DRAWINGS LOGIC
@@ -1018,7 +1038,7 @@ const Page1 = () => {
           {/* Body - Icon Stack */}
           <div className="p-1 flex flex-col gap-1 pointer-events-auto items-center">
             <button
-              title="Select"
+              title="Press Esc"
               onClick={() => bothEngines(e => e.setMode('select'))}
               className={`p-2 rounded transition-colors ${drawingUi1.mode === 'select'
                 ? 'bg-[#444] text-white'
@@ -1029,7 +1049,7 @@ const Page1 = () => {
             </button>
 
             <button
-              title="Trendline"
+              title="Press T"
               onClick={() => bothEngines(e => e.setMode('draw-trendline'))}
               className={`p-2 rounded transition-colors ${drawingUi1.mode === 'draw-trendline'
                 ? 'bg-blue-900/60 text-blue-400'
@@ -1040,7 +1060,7 @@ const Page1 = () => {
             </button>
 
             <button
-              title="Rectangle" onClick={() => bothEngines(e => e.setMode('draw-rect'))}
+              title="Press R" onClick={() => bothEngines(e => e.setMode('draw-rect'))}
               className={`p-2 rounded transition-colors ${drawingUi1.mode === 'draw-rect'
                 ? 'bg-purple-900/60 text-purple-400'
                 : 'hover:bg-[#444] text-gray-300 hover:text-white'

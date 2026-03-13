@@ -316,10 +316,6 @@ export class DrawingEngine {
     });
   }
 
-  // Call this after every setData() with the new aggregated dataset.
-  // Snaps each drawing's time coords to the nearest bar in the new scale.
-  // Always reads from origP1/origP2 (not current prim values) so repeated
-  // timeframe switches never drift from the user's intended position.
   remapTimes(aggregatedData) {
     if (!aggregatedData?.length) return;
     const times = aggregatedData.map(b => b.time);
@@ -330,18 +326,36 @@ export class DrawingEngine {
       for (let i = 1; i < times.length; i++) {
         const d = Math.abs(t - times[i]);
         if (d < bestDist) { bestDist = d; best = times[i]; }
-        // Early exit: times are sorted ascending, so once dist grows we're past the closest
         if (times[i] > t && d > bestDist) break;
       }
       return best;
     };
 
     for (const [, tool] of this.tools) {
-      const snappedP1 = { price: tool.origP1.price, time: snap(tool.origP1.time) };
-      const snappedP2 = { price: tool.origP2.price, time: snap(tool.origP2.time) };
-      tool.prim.updateBoth(snappedP1, snappedP2);
+      tool.prim.updateBoth(
+        { time: snap(tool.origP1.time), price: tool.origP1.price },
+        { time: snap(tool.origP2.time), price: tool.origP2.price },
+      );
     }
     this._forceRedraw();
   }
 
+  // Called on mobile when second tap fires in draw mode.
+  // Finalizes at wherever the live preview currently sits (_p2 as moved by finger),
+  // ignoring the tap's own coordinates entirely.
+  commitCurrentPreview() {
+    if (!this.activePrim) return;
+    const p2 = { ...this.activePrim._p2 };   // frozen preview position
+    this.activePrim.finalize(p2);
+    const { id, type } = this.activePrim;
+    this.tools.set(id, {
+      id, type, prim: this.activePrim,
+      origP1: { ...this.activePrim._p1 },
+      origP2: { ...this.activePrim._p2 },
+    });
+    this.activePrim = null;
+    this.status = MSG.placed;
+    this._forceRedraw();
+    this._emit();
+  }
 }
