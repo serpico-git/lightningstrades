@@ -185,7 +185,6 @@ const Page1 = () => {
   const container2 = useRef();
   const chartRefs = useRef({});
   const seriesRefs = useRef({});
-  const priceLineRefs = useRef({});
   const markersRefs = useRef({ c1: null, c2: null });
   const prevTimeframes = useRef({ c1: null, c2: null });
 
@@ -526,7 +525,6 @@ const Page1 = () => {
       Object.values(chartRefs.current).forEach(c => c.remove());
       engine1Ref.current.destroy();
       engine2Ref.current.destroy();
-      priceLineRefs.current = {};
     };
   }, []);
 
@@ -574,22 +572,15 @@ const Page1 = () => {
     const tf2Changed = prevTimeframes.current.c2 !== c2Timeframe;
 
     if (tf1Changed) {
-      chartRefs.current.c1?.timeScale().fitContent();
+      // chartRefs.current.c1?.timeScale().fitContent();
+      chartRefs.current.c1?.timeScale().scrollToPosition(0, false);
       prevTimeframes.current.c1 = c1Timeframe;
     }
     if (tf2Changed) {
-      chartRefs.current.c2?.timeScale().fitContent();
+      // chartRefs.current.c2?.timeScale().fitContent();
+      chartRefs.current.c2?.timeScale().scrollToPosition(0, false);
       prevTimeframes.current.c2 = c2Timeframe;
     }
-
-
-    const currentLineIds = Object.keys(priceLineRefs.current);
-    currentLineIds.forEach(id => {
-      const refs = priceLineRefs.current[id];
-      if (refs.c1 && seriesRefs.current.c1C) seriesRefs.current.c1C.removePriceLine(refs.c1);
-      if (refs.c2 && seriesRefs.current.c2C) seriesRefs.current.c2C.removePriceLine(refs.c2);
-      delete priceLineRefs.current[id];
-    });
 
     // --- NEW: APPLY SERIES MARKERS (LWC v5 Plugin API) ---
     if (seriesRefs.current.c1C && executions.length > 0 && showMarkers) {
