@@ -3,9 +3,9 @@ import { RectanglePrimitive } from '../primitives/RectanglePrimitive.js';
 
 const MSG = {
   idle: 'Click a shape to select · Drag handle to resize · Drag body to move',
-  drawFirst: 'Click to place first anchor point',
-  drawSecond: 'Click to place second point · Esc to cancel',
-  placed: 'Shape placed · Click to draw another · Esc for select mode',
+  drawFirst: 'Press and drag to draw',
+  drawSecond: 'Release to place · Esc to cancel',
+  placed: 'Shape placed · Draw another or Esc for select mode',
   deleted: 'Shape deleted',
   cleared: 'All shapes cleared',
   selected: (type, id) => `${type === 'trendline' ? 'Trendline' : 'Rectangle'} #${id} selected`,
@@ -27,21 +27,23 @@ export class DrawingEngine {
     this.chart = null;
     this.series = null;
     this.onUpdate = null;
-
     this.mode = 'select';
     this.cursor = 'default';
     this.status = MSG.idle;
-
-    this.tools = new Map();   // id → { id, type, prim }
+    this.tools = new Map();   // id → { id, type, prim, origP1, origP2 }
     this.activePrim = null;
     this.selectedId = null;
     this.drag = null;
+
+    // In constructor, add:
+    this.onDrawingPlaced = null;   // fired when drawing finalizes → Page1 resets both engines
+
   }
 
-  // chart and series are a single { chart, series } pair
   init(chart, series) {
     this.chart = chart;
     this.series = series;
+    console.log('[Engine] init — chart and series set');
   }
 
   setMode(mode) {
@@ -57,15 +59,18 @@ export class DrawingEngine {
     this._emit();
   }
 
+  // Drag-to-draw model:
+  // mouseDown = anchor 1
+  // mouseMove = live preview
+  // mouseUp   = anchor 2 (finalize at preview position)
   handleMouseDown(x, y) {
     if (!this.chart || !this.series) return;
 
     /* ── DRAW MODE ── */
     if (this.mode === 'draw-trendline' || this.mode === 'draw-rect') {
-      const tp = this._toTP(x, y);
-      if (tp.time == null || tp.price == null) return;
-
       if (!this.activePrim) {
+        const tp = this._toTP(x, y);
+        if (tp.time == null || tp.price == null) return;
         const prim = this.mode === 'draw-trendline'
           ? new TrendlinePrimitive(tp)
           : new RectanglePrimitive(tp);
@@ -73,20 +78,8 @@ export class DrawingEngine {
         this.series.attachPrimitive(prim);
         this.activePrim = prim;
         this.status = MSG.drawSecond;
-      } else {
-        this.activePrim.finalize(tp);
-        const { id, type } = this.activePrim;
-        this.tools.set(id, {
-          id, type, prim: this.activePrim,
-          // Store unsnapped originals so remapTimes always snaps from source of truth
-          origP1: { ...this.activePrim._p1 },
-          origP2: { ...this.activePrim._p2 },
-        });
-        this.activePrim = null;
-        this.status = MSG.placed;
-        this._forceRedraw();
+        this._emit();
       }
-      this._emit();
       return;
     }
 
@@ -112,31 +105,69 @@ export class DrawingEngine {
 
   handleMouseMove(x, y) {
     if (!this.chart || !this.series) return;
-
     if (this.activePrim) {
       const tp = this._toTP(x, y);
       if (tp.time != null && tp.price != null) this.activePrim.liveUpdate(tp);
       return;
     }
-
-    if (this.drag) {
-      this._applyDrag(x, y);
-      return;
-    }
-
+    if (this.drag) { this._applyDrag(x, y); return; }
     if (this.mode !== 'select') return;
     this._updateHover(x, y);
   }
 
   handleMouseUp() {
+    /* ── Finalize drawing ── */
+    if (this.activePrim) {
+      const p1 = this.activePrim._p1;
+      const p2 = { ...this.activePrim._p2 };
+
+      // Reject trivial tap-without-drag
+      if (p1.time === p2.time && p1.price === p2.price) {
+        // REPLACE WITH (clean version):
+        this.series?.detachPrimitive(this.activePrim);
+        this._forceRedraw();
+        this.activePrim = null;
+        this.status = MSG.drawFirst;     // stay in draw mode, user just tapped without dragging
+        this._emit();
+        return;
+      }
+
+      this.activePrim.finalize(p2);
+      const { id, type } = this.activePrim;
+      this.tools.set(id, {
+        id, type,
+        prim: this.activePrim,
+        // origP1/origP2 are ABSOLUTE timestamps — never remapped after this
+        origP1: { ...this.activePrim._p1 },
+        origP2: { ...this.activePrim._p2 },
+      });
+      console.log(
+        `[Engine] #${id} finalized | p1: ${new Date(this.activePrim._p1.time * 1000).toISOString()}` +
+        ` | p2: ${new Date(p2.time * 1000).toISOString()}`
+      );
+
+      this.activePrim = null;
+      this.mode = 'select';
+      this.cursor = 'default';
+      this.status = MSG.placed;
+      this._unlockChart();
+      this._forceRedraw();
+      this._emit();
+
+      this.onDrawingPlaced?.();   // ← ADD THIS
+
+      return;
+    }
+
+    /* ── Finalize select-mode drag ── */
     if (!this.drag) return;
     const id = this.drag.toolId;
     const tool = this.tools.get(id);
-    // Persist final edited position as new originals so next remapTimes
-    // snaps from where the user intentionally placed the drawing
     if (tool) {
+      // Save the user's new intended position as the new originals
       tool.origP1 = { ...tool.prim._p1 };
       tool.origP2 = { ...tool.prim._p2 };
+      console.log(`[Engine] #${id} moved | p1: ${new Date(tool.origP1.time * 1000).toISOString()} | p2: ${new Date(tool.origP2.time * 1000).toISOString()}`);
     }
     this.drag = null;
     this._unlockChart();
@@ -155,6 +186,7 @@ export class DrawingEngine {
     this.selectedId = null;
     this.drag = null;
     this.status = MSG.deleted;
+    console.log(`[Engine] deleted #${this.selectedId}`);
     this._emit();
   }
 
@@ -165,6 +197,7 @@ export class DrawingEngine {
     this.selectedId = null;
     this.drag = null;
     this.status = MSG.cleared;
+    console.log('[Engine] all drawings cleared');
     this._emit();
   }
 
@@ -177,13 +210,114 @@ export class DrawingEngine {
     this.drag = null;
   }
 
-  // ── Private ───────────────────────────────────────────────────
+  // ── Session cache persistence ────────────────────────────────
+
+  // Returns plain JSON-safe array. Call after remapTimes to keep cache current.
+  exportState() {
+    const result = [];
+    for (const [, tool] of this.tools) {
+      result.push({
+        type: tool.type,
+        origP1: { ...tool.origP1 },
+        origP2: { ...tool.origP2 },
+      });
+    }
+    return result;
+  }
+
+  // Restores drawings from a previously exported state.
+  // Must be called AFTER init() and AFTER setData() so the time scale is ready.
+  importState(drawings) {
+    if (!drawings?.length || !this.series) return;
+    console.log(`[Engine] importing ${drawings.length} drawing(s) from session cache`);
+    for (const d of drawings) {
+      try {
+        const prim = d.type === 'trendline'
+          ? new TrendlinePrimitive(d.origP1)
+          : new RectanglePrimitive(d.origP1);
+        this.series.attachPrimitive(prim);
+        prim.finalize(d.origP2);
+        this.tools.set(prim.id, {
+          id: prim.id,
+          type: d.type,
+          prim,
+          origP1: { ...d.origP1 },
+          origP2: { ...d.origP2 },
+        });
+      } catch (err) {
+        console.error('[Engine] importState failed for drawing:', d, err);
+      }
+    }
+    this._forceRedraw();
+    this._emit();
+  }
+
+  // ── Key design: remapTimes does NOT move drawings ────────────
+  remapTimes(aggregatedData) {
+    if (!aggregatedData?.length || !this.tools.size) return;
+
+    const realTimes = aggregatedData.map(b => b.time);
+    const lastRealTime = realTimes[realTimes.length - 1];
+
+    // Reconstruct whitespace timestamps using same formula as buildWithWhitespace.
+    // Future drawing coordinates must snap to these — they are the ONLY future
+    // timestamps registered in LWC's time index after each setData call.
+    // Formula: wsCount = max(30, ceil(54000 / spacingSeconds))
+    // matches buildWithWhitespace's: max(30, ceil(900 / multiplier))
+    let allTimes = realTimes;
+    if (realTimes.length >= 2) {
+      const spacing = lastRealTime - realTimes[realTimes.length - 2];
+      const wsCount = Math.max(30, Math.ceil(54000 / spacing));
+      const wsTimes = Array.from(
+        { length: wsCount },
+        (_, i) => lastRealTime + (i + 1) * spacing
+      );
+      allTimes = [...realTimes, ...wsTimes];
+    }
+
+    // Binary search snap — reads from origP1/origP2 always, never from prim state.
+    // No drift possible across repeated timeframe switches.
+    const snapToNearest = (t, times) => {
+      let lo = 0, hi = times.length - 1;
+      while (lo < hi) {
+        const mid = (lo + hi) >> 1;
+        if (times[mid] < t) lo = mid + 1;
+        else hi = mid;
+      }
+      if (lo > 0 && Math.abs(times[lo - 1] - t) <= Math.abs(times[lo] - t)) {
+        return times[lo - 1];
+      }
+      return times[lo];
+    };
+
+    for (const [, tool] of this.tools) {
+      // Past/present timestamps → snap to nearest real bar boundary
+      // Future timestamps → snap to nearest whitespace bar boundary
+      // Both cases guaranteed to be registered in LWC's time index
+      const p1Times = tool.origP1.time > lastRealTime ? allTimes : realTimes;
+      const p2Times = tool.origP2.time > lastRealTime ? allTimes : realTimes;
+
+      tool.prim.updateBoth(
+        { time: snapToNearest(tool.origP1.time, p1Times), price: tool.origP1.price },
+        { time: snapToNearest(tool.origP2.time, p2Times), price: tool.origP2.price },
+      );
+    }
+
+    requestAnimationFrame(() => this._forceRedraw());
+  }
+
+
+  // ── Private ──────────────────────────────────────────────────
 
   _toTP(x, y) {
-    return {
-      time: this.chart?.timeScale().coordinateToTime(x) ?? null,
-      price: this.series?.coordinateToPrice(y) ?? null,
-    };
+    const ts = this.chart?.timeScale();
+    const sc = this.series;
+    if (!ts || !sc) return { time: null, price: null };
+    const time = ts.coordinateToTime(x) ?? null;
+    const price = sc.coordinateToPrice(y) ?? null;
+    // Uncomment to debug future zone:
+    // console.log('[Engine] _toTP x:', x.toFixed(0), '→ time:', time, 'price:', price?.toFixed(2));
+    return { time, price };
   }
 
   _lockChart() { this.chart?.applyOptions({ handleScroll: false, handleScale: false }); }
@@ -191,8 +325,10 @@ export class DrawingEngine {
     if (this.mode === 'select')
       this.chart?.applyOptions({ handleScroll: true, handleScale: true });
   }
-
-  _forceRedraw() { this.series?.applyOptions({}); }
+  // _forceRedraw() { this.series?.applyOptions({}); }
+  // chart.applyOptions({}) triggers a full repaint including all primitives.
+  // series.applyOptions({}) is unreliable for this in LWC v5.
+  _forceRedraw() { this.chart?.applyOptions({}); }
 
   _deselectAll() {
     for (const [, tool] of this.tools) {
@@ -203,7 +339,6 @@ export class DrawingEngine {
   }
 
   _hitTestAll(x, y) {
-    // Selected shape always gets priority
     if (this.selectedId) {
       const sel = this.tools.get(this.selectedId);
       if (sel) {
@@ -230,7 +365,6 @@ export class DrawingEngine {
   _startDrag(toolEntry, part, x, y) {
     this._lockChart();
     const { prim } = toolEntry;
-
     if (toolEntry.type === 'trendline') {
       const px = prim.endpointPixels();
       this.drag = {
@@ -255,7 +389,6 @@ export class DrawingEngine {
     if (!d) return;
     const tool = this.tools.get(d.toolId);
     if (!tool) return;
-
     const ts = this.chart?.timeScale();
     const sc = this.series;
     if (!ts || !sc) return;
@@ -290,8 +423,7 @@ export class DrawingEngine {
         case 'bottom': bottom = y; break;
         case 'left': left = x; break;
         case 'right': right = x; break;
-        case 'body':
-          left += dx; right += dx; top += dy; bottom += dy; break;
+        case 'body': left += dx; right += dx; top += dy; bottom += dy; break;
         default: return;
       }
       const t1 = ts.coordinateToTime(left);
@@ -315,47 +447,7 @@ export class DrawingEngine {
       selectedId: this.selectedId,
     });
   }
-
-  remapTimes(aggregatedData) {
-    if (!aggregatedData?.length) return;
-    const times = aggregatedData.map(b => b.time);
-
-    const snap = (t) => {
-      let best = times[0];
-      let bestDist = Math.abs(t - times[0]);
-      for (let i = 1; i < times.length; i++) {
-        const d = Math.abs(t - times[i]);
-        if (d < bestDist) { bestDist = d; best = times[i]; }
-        if (times[i] > t && d > bestDist) break;
-      }
-      return best;
-    };
-
-    for (const [, tool] of this.tools) {
-      tool.prim.updateBoth(
-        { time: snap(tool.origP1.time), price: tool.origP1.price },
-        { time: snap(tool.origP2.time), price: tool.origP2.price },
-      );
-    }
-    this._forceRedraw();
-  }
-
-  // Called on mobile when second tap fires in draw mode.
-  // Finalizes at wherever the live preview currently sits (_p2 as moved by finger),
-  // ignoring the tap's own coordinates entirely.
-  commitCurrentPreview() {
-    if (!this.activePrim) return;
-    const p2 = { ...this.activePrim._p2 };   // frozen preview position
-    this.activePrim.finalize(p2);
-    const { id, type } = this.activePrim;
-    this.tools.set(id, {
-      id, type, prim: this.activePrim,
-      origP1: { ...this.activePrim._p1 },
-      origP2: { ...this.activePrim._p2 },
-    });
-    this.activePrim = null;
-    this.status = MSG.placed;
-    this._forceRedraw();
-    this._emit();
-  }
 }
+
+
+

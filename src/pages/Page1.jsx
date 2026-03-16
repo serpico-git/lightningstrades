@@ -96,6 +96,8 @@ const sessionCache = {
   triggerPrice: "",
   pendingOrders: [],
   executions: [],
+  drawings1: [],   // ← ADD: persists chart1 drawings across navigation
+  drawings2: [],   // ← ADD: persists chart2 drawings across navigation
 };
 
 const Page1 = () => {
@@ -139,6 +141,13 @@ const Page1 = () => {
   const [activePanel, setActivePanel] = useState(null); // 'ORDER' | 'DRAW' | null
   const [orderPos, setOrderPos] = useState({ x: 20, y: 60 });
   const [drawPos, setDrawPos] = useState({ x: 20, y: 60 });
+  // Each chart gets its own independent UI state
+  const [drawingUi1, setDrawingUi1] = useState({
+    mode: 'select', cursor: 'default', status: '', count: 0, selectedId: null,
+  });
+  const [drawingUi2, setDrawingUi2] = useState({
+    mode: 'select', cursor: 'default', status: '', count: 0, selectedId: null,
+  });
 
   // INDICATOR & Marker STATE (Initialized from cache)
   const [c1Ma, setC1Ma] = useState(sessionCache.c1Ma);
@@ -187,11 +196,19 @@ const Page1 = () => {
   const seriesRefs = useRef({});
   const markersRefs = useRef({ c1: null, c2: null });
   const prevTimeframes = useRef({ c1: null, c2: null });
+  // const hasImportedDrawings = useRef(false);
+
 
   // COMPUTED VALUES
   const currentBar = fullData[currentIndex] || {};
   const currentPrice = currentBar.close || 0;
   const currentTime = currentBar.time || 0;
+  // Both engines are always set to the same mode by bothEngines().
+  // They only diverge when one finishes a drawing and auto-returns to select.
+  // Use the non-select mode if either is active, so buttons reflect reality.
+  const activeToolMode = drawingUi1.mode !== 'select'
+    ? drawingUi1.mode
+    : drawingUi2.mode;
 
   // COMPUTED VALUES // NOTE: All chart timestamps are IST-shifted (+5:30)
   const formatTime = (t) => {
@@ -492,6 +509,7 @@ const Page1 = () => {
         borderColor: '#374151',
         timeVisible: true,
         secondsVisible: false,
+        rightOffset: 5,
       },
       crosshair: { mode: 0 },
       handleScroll: { mouseWheel: true, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: true },
@@ -511,6 +529,7 @@ const Page1 = () => {
     initChart(container1, 'c1');
     initChart(container2, 'c2');
 
+
     setChartsReady(true);
 
     const resize = () => Object.values(chartRefs.current).forEach(c => {
@@ -525,8 +544,30 @@ const Page1 = () => {
       Object.values(chartRefs.current).forEach(c => c.remove());
       engine1Ref.current.destroy();
       engine2Ref.current.destroy();
+      console.log('[Chart] Charts destroyed and engines cleaned up');
     };
   }, []);
+
+
+  // Runs once after engines are initialized AND data is loaded.
+  // Separated from the update effect so it's not re-triggered by
+  // simulation ticks, timeframe changes, or indicator toggles.
+  useEffect(() => {
+    if (!chartsReady || !isLoaded) return;
+    const s1 = seriesRefs.current.c1C;
+    const s2 = seriesRefs.current.c2C;
+    if (!s1 || !s2) return;
+
+    if (sessionCache.drawings1?.length) {
+      engine1Ref.current.importState(sessionCache.drawings1);
+      console.log(`[Drawings] c1 restored ${sessionCache.drawings1.length} drawing(s)`);
+    }
+    if (sessionCache.drawings2?.length) {
+      engine2Ref.current.importState(sessionCache.drawings2);
+      console.log(`[Drawings] c2 restored ${sessionCache.drawings2.length} drawing(s)`);
+    }
+  }, [chartsReady, isLoaded]); // fires once when both are ready, and on re-mount after navigation
+
 
   // UPDATE CHARTS & LOGIC
   useEffect(() => {
@@ -546,8 +587,34 @@ const Page1 = () => {
     const c1Data = getAggregatedData(fullData, c1Timeframe, currentIndex);
     const c2Data = getAggregatedData(fullData, c2Timeframe, currentIndex);
 
-    seriesRefs.current.c1C.setData(c1Data);
-    seriesRefs.current.c2C.setData(c2Data);
+    // ── Helper: build whitespace bars appended to real candle data ──
+    // YouTube approach: { time } only objects on the CANDLESTICK series itself.
+    // LWC natively treats these as whitespace — no price impact, no y-axis
+    // distortion, no viewport pollution. coordinateToTime() returns valid
+    // timestamps in this zone so drawing engine works there seamlessly.
+    const buildWithWhitespace = (aggData, multiplier) => {
+      if (aggData.length < 2) return aggData;
+      const last = aggData[aggData.length - 1];
+      const prev = aggData[aggData.length - 2];
+      const spacing = last.time - prev.time;
+      // Cover enough future time across all timeframe switches:
+      // rightOffset(15) × max multiplier(60) = 900 base bars minimum
+      const count = Math.max(30, Math.ceil(900 / multiplier));
+      const future = Array.from({ length: count }, (_, i) => ({
+        time: last.time + (i + 1) * spacing,
+      }));
+      console.log(
+        `[Whitespace] TF:${multiplier}x | spacing:${spacing}s | future bars:${count}` +
+        ` | last real: ${new Date(last.time * 1000).toISOString()}` +
+        ` | last future: ${new Date(future[future.length - 1].time * 1000).toISOString()}`
+      );
+      return [...aggData, ...future];
+    };
+
+    // REPLACE WITH:
+    seriesRefs.current.c1C.setData(buildWithWhitespace(c1Data, c1Timeframe));
+    seriesRefs.current.c2C.setData(buildWithWhitespace(c2Data, c2Timeframe));
+    console.log(`[Charts] c1 bars: ${c1Data.length} real + whitespace | c2 bars: ${c2Data.length} real + whitespace`);
 
     const sma1 = calculateSMA(c1Data, c1Ma.period);
     seriesRefs.current.c1Ma.setData(sma1);
@@ -566,6 +633,19 @@ const Page1 = () => {
     engine1Ref.current.remapTimes(c1Data);
     engine2Ref.current.remapTimes(c2Data);
 
+    // Export on every tick so cache always has latest drawing state.
+    // Import is handled in its own dedicated effect above.
+    sessionCache.drawings1 = engine1Ref.current.exportState();
+    sessionCache.drawings2 = engine2Ref.current.exportState();
+
+
+    // ── Drawing session persistence ─────────────────────────────
+
+    // KEEP THESE — no change:
+    chartRefs.current.c1?.timeScale().applyOptions({ rightOffset: 5 });
+    chartRefs.current.c2?.timeScale().applyOptions({ rightOffset: 5 });
+
+
     // Scroll to latest candle ONLY when timeframe changes.
     // Never on simulator ticks — user controls viewport freely otherwise.
     const tf1Changed = prevTimeframes.current.c1 !== c1Timeframe;
@@ -575,11 +655,13 @@ const Page1 = () => {
       // chartRefs.current.c1?.timeScale().fitContent();
       chartRefs.current.c1?.timeScale().scrollToPosition(0, false);
       prevTimeframes.current.c1 = c1Timeframe;
+      console.log(`[Timeframe] c1 changed to ${c1Timeframe}x — viewport reset`);
     }
     if (tf2Changed) {
       // chartRefs.current.c2?.timeScale().fitContent();
       chartRefs.current.c2?.timeScale().scrollToPosition(0, false);
       prevTimeframes.current.c2 = c2Timeframe;
+      console.log(`[Timeframe] c2 changed to ${c2Timeframe}x — viewport reset`);
     }
 
     // --- NEW: APPLY SERIES MARKERS (LWC v5 Plugin API) ---
@@ -690,6 +772,7 @@ const Page1 = () => {
     e.target.releasePointerCapture(e.pointerId);
   };
 
+  //DRAWINGS LOGIC
   const handleChartPointer = useCallback((e, chartIdx) => {
     if (e.button !== undefined && e.button !== 0 && e.type === 'pointerdown') return;
     const ref = chartIdx === 0 ? container1 : container2;
@@ -698,38 +781,23 @@ const Page1 = () => {
     const x = e.clientX - r.left;
     const y = e.clientY - r.top;
     const engine = chartIdx === 0 ? engine1Ref.current : engine2Ref.current;
-
-    if (e.type === 'pointermove') {
-      engine.handleMouseMove(x, y);
-      return;
-    }
-
-    if (e.type === 'pointerdown') {
-      const isTouch = e.pointerType === 'touch';
-
-      if (isTouch && engine.activePrim) {
-        // Mobile second tap: commit at the frozen preview position,
-        // not at the tap coordinates (which are wherever the finger lands).
-        engine.commitCurrentPreview();
-      } else {
-        engine.handleMouseDown(x, y);
-      }
-    }
+    if (e.type === 'pointerdown') engine.handleMouseDown(x, y);
+    if (e.type === 'pointermove') engine.handleMouseMove(x, y);
+    // pointerup is handled by the global window listener
   }, []);
 
-  //DRAWINGS LOGIC
+
   const engine1Ref = useRef(new DrawingEngine());
   const engine2Ref = useRef(new DrawingEngine());
-  // Each chart gets its own independent UI state
-  const [drawingUi1, setDrawingUi1] = useState({
-    mode: 'select', cursor: 'default', status: '', count: 0, selectedId: null,
-  });
-  const [drawingUi2, setDrawingUi2] = useState({
-    mode: 'select', cursor: 'default', status: '', count: 0, selectedId: null,
-  });
 
   engine1Ref.current.onUpdate = setDrawingUi1;
   engine2Ref.current.onUpdate = setDrawingUi2;
+
+  // ADD THESE TWO LINES:
+  // When either engine places a drawing, reset BOTH to select so UI syncs.
+  engine1Ref.current.onDrawingPlaced = () => bothEngines(e => e.setMode('select'));
+  engine2Ref.current.onDrawingPlaced = () => bothEngines(e => e.setMode('select'));
+
 
   // A helper so toolbar buttons and keyboard shortcuts broadcast to both
   const bothEngines = useCallback((fn) => {
@@ -1031,7 +1099,7 @@ const Page1 = () => {
             <button
               title="Press Esc"
               onClick={() => bothEngines(e => e.setMode('select'))}
-              className={`p-2 rounded transition-colors ${drawingUi1.mode === 'select'
+              className={`p-2 rounded transition-colors ${activeToolMode === 'select'
                 ? 'bg-[#444] text-white'
                 : 'hover:bg-[#444] text-gray-300 hover:text-white'
                 }`}
@@ -1042,7 +1110,7 @@ const Page1 = () => {
             <button
               title="Press T"
               onClick={() => bothEngines(e => e.setMode('draw-trendline'))}
-              className={`p-2 rounded transition-colors ${drawingUi1.mode === 'draw-trendline'
+              className={`p-2 rounded transition-colors ${activeToolMode === 'draw-trendline'
                 ? 'bg-blue-900/60 text-blue-400'
                 : 'hover:bg-[#444] text-gray-300 hover:text-white'
                 }`}
@@ -1052,7 +1120,7 @@ const Page1 = () => {
 
             <button
               title="Press R" onClick={() => bothEngines(e => e.setMode('draw-rect'))}
-              className={`p-2 rounded transition-colors ${drawingUi1.mode === 'draw-rect'
+              className={`p-2 rounded transition-colors ${activeToolMode === 'draw-rect'
                 ? 'bg-purple-900/60 text-purple-400'
                 : 'hover:bg-[#444] text-gray-300 hover:text-white'
                 }`}
