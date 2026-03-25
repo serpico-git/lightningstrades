@@ -96,7 +96,7 @@ const Page2 = () => {
 
             <div className="flex flex-col gap-2 text-xs">
               <div className="text-gray-400 hover:text-white transition">
-                <span className="font-medium">Email:</span> lightningtrades.support@gmail.com
+                <span className="font-medium">Email:</span> lightningstrades.support@gmail.com
               </div>
 
               <div className="text-gray-400 hover:text-white transition">

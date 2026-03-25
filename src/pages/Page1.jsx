@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from "react-router-dom";
 import { createChart, ColorType, CandlestickSeries, LineSeries, createSeriesMarkers } from 'lightweight-charts';
-import { Activity, Play, Pause, SkipBack, SkipForward, LayoutGrid, MousePointer2, Layers, X, Maximize2, Plus, Minus, Crown, ChevronDown, Lock, Pencil, TrendingUp, Square, Trash2 } from 'lucide-react';
+import { Activity, Play, Pause, SkipBack, SkipForward, LayoutGrid, MousePointer2, Layers, X, Maximize2, Plus, Minus, Crown, ChevronDown, Lock, Pencil, TrendingUp, Square, Trash2, GripVertical, Settings2, ChevronUp } from 'lucide-react';
 import { DrawingEngine } from '../engine/DrawingEngine';
 
 
@@ -153,7 +153,7 @@ const Page1 = () => {
   const [c1Ma, setC1Ma] = useState(sessionCache.c1Ma);
   const [c1Bb, setC1Bb] = useState(sessionCache.c1Bb);
   const [c2Ma, setC2Ma] = useState(sessionCache.c2Ma);
-  const [showMarkers, setShowMarkers] = useState(sessionCache.showMarkers ?? false);
+  const [showMarkers, setShowMarkers] = useState(sessionCache.showMarkers ?? true);
 
   // Label logic based on your exact conditions
   let orderModeLabel = 'Intraday - Limit'; // Both unselected
@@ -544,7 +544,7 @@ const Page1 = () => {
       Object.values(chartRefs.current).forEach(c => c.remove());
       engine1Ref.current.destroy();
       engine2Ref.current.destroy();
-      console.log('[Chart] Charts destroyed and engines cleaned up');
+      // console.log('[Chart] Charts destroyed and engines cleaned up');
     };
   }, []);
 
@@ -560,11 +560,11 @@ const Page1 = () => {
 
     if (sessionCache.drawings1?.length) {
       engine1Ref.current.importState(sessionCache.drawings1);
-      console.log(`[Drawings] c1 restored ${sessionCache.drawings1.length} drawing(s)`);
+      // console.log(`[Drawings] c1 restored ${sessionCache.drawings1.length} drawing(s)`);
     }
     if (sessionCache.drawings2?.length) {
       engine2Ref.current.importState(sessionCache.drawings2);
-      console.log(`[Drawings] c2 restored ${sessionCache.drawings2.length} drawing(s)`);
+      // console.log(`[Drawings] c2 restored ${sessionCache.drawings2.length} drawing(s)`);
     }
   }, [chartsReady, isLoaded]); // fires once when both are ready, and on re-mount after navigation
 
@@ -603,18 +603,18 @@ const Page1 = () => {
       const future = Array.from({ length: count }, (_, i) => ({
         time: last.time + (i + 1) * spacing,
       }));
-      console.log(
-        `[Whitespace] TF:${multiplier}x | spacing:${spacing}s | future bars:${count}` +
-        ` | last real: ${new Date(last.time * 1000).toISOString()}` +
-        ` | last future: ${new Date(future[future.length - 1].time * 1000).toISOString()}`
-      );
+      // console.log(
+      //   `[Whitespace] TF:${multiplier}x | spacing:${spacing}s | future bars:${count}` +
+      //   ` | last real: ${new Date(last.time * 1000).toISOString()}` +
+      //   ` | last future: ${new Date(future[future.length - 1].time * 1000).toISOString()}`
+      // );
       return [...aggData, ...future];
     };
 
     // REPLACE WITH:
     seriesRefs.current.c1C.setData(buildWithWhitespace(c1Data, c1Timeframe));
     seriesRefs.current.c2C.setData(buildWithWhitespace(c2Data, c2Timeframe));
-    console.log(`[Charts] c1 bars: ${c1Data.length} real + whitespace | c2 bars: ${c2Data.length} real + whitespace`);
+    // console.log(`[Charts] c1 bars: ${c1Data.length} real + whitespace | c2 bars: ${c2Data.length} real + whitespace`);
 
     const sma1 = calculateSMA(c1Data, c1Ma.period);
     seriesRefs.current.c1Ma.setData(sma1);
@@ -655,13 +655,13 @@ const Page1 = () => {
       // chartRefs.current.c1?.timeScale().fitContent();
       chartRefs.current.c1?.timeScale().scrollToPosition(0, false);
       prevTimeframes.current.c1 = c1Timeframe;
-      console.log(`[Timeframe] c1 changed to ${c1Timeframe}x — viewport reset`);
+      // console.log(`[Timeframe] c1 changed to ${c1Timeframe}x — viewport reset`);
     }
     if (tf2Changed) {
       // chartRefs.current.c2?.timeScale().fitContent();
       chartRefs.current.c2?.timeScale().scrollToPosition(0, false);
       prevTimeframes.current.c2 = c2Timeframe;
-      console.log(`[Timeframe] c2 changed to ${c2Timeframe}x — viewport reset`);
+      // console.log(`[Timeframe] c2 changed to ${c2Timeframe}x — viewport reset`);
     }
 
     // --- NEW: APPLY SERIES MARKERS (LWC v5 Plugin API) ---
@@ -953,122 +953,122 @@ const Page1 = () => {
         <div
           ref={orderRef}
           style={{ transform: `translate(${orderPos.x}px, ${orderPos.y}px)`, position: 'absolute', zIndex: 45 }}
-          // Reduced base width for mobile, normal width on sm+ screens
-          className={`${activePanel === 'ORDER' ? 'flex' : 'hidden'} mt-panel w-[200px] sm:w-[220px] flex-col shadow-2xl bg-[#2d2d2d] touch-none`}
+          className={`${activePanel === 'ORDER' ? 'flex' : 'hidden'
+            } flex-col shadow-2xl bg-[#2d2d2d] touch-none font-mono rounded border border-[#555] overflow-hidden min-w-fit`}
         >
-          {/* Draggable Header */}
-          <div
-            onPointerDown={(e) => handlePointerDown(e, 'ORDER')}
-            onPointerMove={handlePointerMove}
-            onPointerUp={handlePointerUp}
-            onPointerCancel={handlePointerUp}
-            className="flex justify-between items-center p-2 bg-[#222] border-b border-[#555] cursor-move select-none"
-          >
-            <div className="flex items-center gap-1 text-[10px] font-bold text-yellow-500">
-              <MousePointer2 size={12} /> ORDER PANEL
-            </div>
-            <button className="text-gray-400 hover:text-white" onPointerDown={(e) => e.stopPropagation()} onClick={() => setActivePanel(null)}>
-              <X size={14} />
-            </button>
-          </div>
+          {/* 1. COMPACT MAIN ROW (Always Visible) */}
+          <div className="flex items-center gap-1.5 p-1 sm:p-1.5 bg-[#222]">
 
-          {/* Body */}
-          {/* Tighter gap and padding for mobile fit */}
-          <div className="p-1.5 sm:p-2 flex flex-col gap-1.5 pointer-events-auto">
-
-            {/* Dynamic Mode Label */}
-            <div className="text-center text-[10px] sm:text-xs font-bold text-blue-400 bg-[#1a1a1a] py-1 rounded border border-[#444]">
-              {orderModeLabel}
-            </div>
-
-            <div className="flex justify-between text-[10px] sm:text-xs text-white">
-              <span>Price:</span> <span className="font-bold">{currentPrice.toFixed(2)}</span>
-            </div>
-            <div className="flex justify-between text-[10px] sm:text-xs text-white">
-              <span>Live PnL:</span> <span className={`font-bold ${openPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>{openPnL.toFixed(2)}</span>
-            </div>
-
-            {/* Expand Advanced Orders Button */}
-            <button
-              onClick={() => setIsExpanded(!isExpanded)}
-              className="text-[9px] sm:text-[10px] text-gray-300 hover:text-white bg-[#333] border border-[#555] rounded py-0.5 mt-0.5"
+            {/* Drag Handle [:] */}
+            <div
+              onPointerDown={(e) => handlePointerDown(e, 'ORDER')}
+              onPointerMove={handlePointerMove}
+              onPointerUp={handlePointerUp}
+              onPointerCancel={handlePointerUp}
+              className="cursor-move p-1 text-gray-500 hover:text-white"
             >
-              {isExpanded ? '▲ Hide Advanced' : '▼ Advanced Options'}
+              <GripVertical size={16} />
+            </div>
+
+            {/* SELL Button */}
+            <button
+              onClick={() => executeOrder('SELL')}
+              className="bg-red-900/80 hover:bg-red-600 active:bg-red-700 active:scale-95 border border-red-800 text-white px-3 sm:px-4 py-1.5 text-[11px] sm:text-xs font-bold rounded transition-all duration-100"
+            >
+              SELL
             </button>
 
-            {/* Expanded Advanced Section */}
-            {isExpanded && (
-              <div className="flex flex-col gap-1.5 bg-[#222] p-1.5 rounded border border-[#444]">
-                {/* Checkboxes */}
-                <div className="flex justify-between gap-1 text-[9px] sm:text-[10px] text-white">
-                  <label className="flex items-center gap-1 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={isMarket}
-                      onChange={e => setIsMarket(e.target.checked)}
-                      className="accent-blue-600 w-3 h-3"
-                    />
-                    Market price
-                  </label>
-                  <label className="flex items-center gap-1 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={isTrigger}
-                      onChange={e => setIsTrigger(e.target.checked)}
-                      className="accent-blue-600 w-3 h-3"
-                    />
-                    Trigger price
-                  </label>
-                </div>
-
-                {/* Number Fields for Limits/Triggers */}
-                <div className="flex gap-1">
-                  <input
-                    type="number"
-                    step="0.05"
-                    disabled={isMarket} // Disabled if market order
-                    value={limitPrice}                      // Added
-                    onChange={e => setLimitPrice(e.target.value)} // Added
-                    className="mt-inset w-full text-white p-1 text-[10px] sm:text-xs text-center disabled:opacity-30 disabled:cursor-not-allowed"
-                    placeholder="Limit Px"
-                  />
-                  <input
-                    type="number"
-                    step="0.05"
-                    disabled={!isTrigger} // Disabled if trigger is off
-                    value={triggerPrice}                    // Added
-                    onChange={e => setTriggerPrice(e.target.value)} // Added
-                    className="mt-inset w-full text-white p-1 text-[10px] sm:text-xs text-center disabled:opacity-30 disabled:cursor-not-allowed"
-                    placeholder="Trigger Px"
-                  />
-                </div>
-              </div>
-            )}
-
-            {/* Volume/Qty */}
-            {/* Slightly smaller padding on mobile to save vertical space */}
+            {/* Volume/Qty Input */}
             <input
               type="number"
               step="0.01"
               value={qtyInput}
               onChange={e => setQtyInput(+e.target.value)}
-              className="mt-inset w-full text-white p-1 sm:p-1.5 text-xs sm:text-sm font-bold text-center"
-              placeholder="Volume"
+              className="w-16 sm:w-20 bg-[#111] text-white p-1 text-[11px] sm:text-xs font-bold text-center border border-[#444] rounded focus:outline-none focus:border-blue-500"
+              placeholder="Qty"
             />
 
-            {/* Action Buttons */}
-            {/* Reduced py to fit better on small screens */}
-            <div className="grid grid-cols-2 gap-1 mt-0.5">
-              <button onClick={() => executeOrder('SELL')} className="mt-btn mt-btn-red py-2 sm:py-3 text-xs sm:text-sm font-black">SELL</button>
-              <button onClick={() => executeOrder('BUY')} className="mt-btn mt-btn-green py-2 sm:py-3 text-xs sm:text-sm font-black">BUY</button>
-            </div>
+            {/* BUY Button */}
+            <button
+              onClick={() => executeOrder('BUY')}
+              className="bg-green-900/80 hover:bg-green-600 active:bg-green-700 active:scale-95 border border-green-800 text-white px-3 sm:px-4 py-1.5 text-[11px] sm:text-xs font-bold rounded transition-all duration-100"
+            >
+              BUY
+            </button>
 
-            {/* Added Close All Button */}
-            <button onClick={closeAllPositions} className="mt-btn w-full mt-0.5 bg-[#444] text-white border-[#666] py-1 text-[10px] sm:text-xs font-bold hover:bg-red-800 hover:text-white">
-              CLOSE ALL
+            {/* Toggle Advanced / Settings */}
+            <button
+              onClick={() => setIsExpanded(!isExpanded)}
+              className="p-1 ml-1 text-gray-400 hover:text-white rounded bg-[#333] border border-[#555] transition-colors"
+            >
+              {isExpanded ? <ChevronUp size={14} /> : <Settings2 size={14} />}
+            </button>
+
+            {/* Close Panel */}
+            <button onClick={() => setActivePanel(null)} className="p-1 text-gray-400 hover:text-red-400 transition-colors">
+              <X size={16} />
             </button>
           </div>
+
+          {/* 2. EXPANDED DETAILS (Only visible when toggled) */}
+          {isExpanded && (
+            <div className="flex flex-col p-2 gap-2 bg-[#2d2d2d] border-t border-[#555] pointer-events-auto">
+
+              {/* Live Stats Row (Updated to Current Bal and Net PnL) */}
+              <div className="flex justify-between items-center text-[10px] sm:text-xs px-1">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3">
+                  <span className="text-gray-400">
+                    Bal: <span className="text-white font-bold">${(equityHistory.length > 0 ? equityHistory[equityHistory.length - 1].value : balance).toFixed(2)}</span>
+                  </span>
+                  <span className="text-gray-400">
+                    MTM: <span className={`font-bold ${(netProfit + openPnL) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                      ${(netProfit + openPnL).toFixed(2)}
+                    </span>
+                  </span>
+                </div>
+                <div className="text-blue-400 font-bold bg-[#222] px-2 py-0.5 rounded border border-[#555] whitespace-nowrap ml-2">
+                  {orderModeLabel}
+                </div>
+              </div>
+
+              {/* Advanced Order Inputs */}
+              <div className="flex flex-col gap-2 bg-[#222] p-2 rounded border border-[#444]">
+                <div className="flex justify-between text-[10px] text-gray-400 px-1">
+                  <label className="flex items-center gap-1.5 cursor-pointer hover:text-white transition-colors">
+                    <input type="checkbox" checked={isMarket} onChange={e => setIsMarket(e.target.checked)} className="accent-blue-500 rounded" />
+                    Market
+                  </label>
+                  <label className="flex items-center gap-1.5 cursor-pointer hover:text-white transition-colors">
+                    <input type="checkbox" checked={isTrigger} onChange={e => setIsTrigger(e.target.checked)} className="accent-blue-500 rounded" />
+                    Trigger
+                  </label>
+                </div>
+
+                <div className="flex gap-2">
+                  <input
+                    type="number" step="0.05" disabled={isMarket} value={limitPrice} onChange={e => setLimitPrice(e.target.value)}
+                    className="w-full bg-[#111] border border-[#555] rounded text-gray-300 p-1.5 text-[10px] sm:text-xs text-center disabled:opacity-30 disabled:cursor-not-allowed focus:border-blue-500 outline-none"
+                    placeholder="Limit Px"
+                  />
+                  <input
+                    type="number" step="0.05" disabled={!isTrigger} value={triggerPrice} onChange={e => setTriggerPrice(e.target.value)}
+                    className="w-full bg-[#111] border border-[#555] rounded text-gray-300 p-1.5 text-[10px] sm:text-xs text-center disabled:opacity-30 disabled:cursor-not-allowed focus:border-blue-500 outline-none"
+                    placeholder="Trigger Px"
+                  />
+                </div>
+              </div>
+
+              {/* Close All Button */}
+              <button
+                onClick={closeAllPositions}
+                className="w-full bg-red-900/50 hover:bg-red-600 active:bg-red-700 active:scale-[0.98] text-white border border-red-800 py-1.5 mt-1 rounded text-[10px] sm:text-xs font-bold transition-all duration-100"
+              >
+                CLOSE ALL POSITIONS
+              </button>
+            </div>
+          )}
         </div>
+
 
         {/* DRAGGABLE DRAW PANEL (TRADINGVIEW STYLE) */}
         <div
